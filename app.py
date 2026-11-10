@@ -13,6 +13,7 @@ from plotly.subplots import make_subplots
 from core.config import DEFAULT_TIMEFRAMES, TIMEFRAMES
 from core.data import data_range, list_tickers, load_bars
 from core.fmt import DATE_JS, DATETIME_JS, DATETIME_XL, DATE_XL, fmt_date, for_csv, for_excel, is_date_only, style_time_axis
+from core.universes import ALL, AS_OF, UNIVERSES, filter_available, members
 from core.engine import Result, Settings, combine_daily, run_backtest
 from core.metrics import annual_vol_pct, buy_hold_pct, summarize
 from strategies import REGISTRY
@@ -65,8 +66,21 @@ with st.sidebar:
     st.title("📈 GT_Backtester")
 
     st.subheader("Universe")
-    tickers = st.multiselect("Tickers", tickers_all,
-                             default=["AAPL"] if "AAPL" in tickers_all else tickers_all[:1])
+    universe = st.selectbox("Index", list(UNIVERSES), key="universe",
+                            help="Limit the ticker list to an index's current members.")
+    options, missing = filter_available(universe, tickers_all)
+    if universe != ALL:
+        st.caption(f"**{len(options)}** of {len(members(universe))} {universe} tickers have data "
+                   f"(list as of {AS_OF[universe]}).")
+        if missing:
+            with st.expander(f"{len(missing)} members without data"):
+                st.write(", ".join(missing))
+    # Key per universe, so switching index resets the picker to that index's tickers.
+    # The dropdown's own "Select all" picks every ticker in the index.
+    tickers = st.multiselect("Tickers", options, key=f"tickers:{universe}",
+                             default=["AAPL"] if "AAPL" in options else options[:1])
+    if len(tickers) > 20:
+        st.caption(f"{len(tickers)} tickers selected. Large runs on 1m/5m bars take a while.")
     tickers = [t for t in tickers if t in tickers_all]  # drop any whose data was removed
     tfs = st.multiselect("Timeframes", list(TIMEFRAMES), default=DEFAULT_TIMEFRAMES)
 
