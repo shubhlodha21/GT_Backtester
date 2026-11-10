@@ -70,9 +70,13 @@ with st.sidebar:
                             help="Limit the ticker list to an index's current members.")
     options, _ = filter_available(universe, tickers_all)
     # Key per universe, so switching index resets the picker to that index's tickers.
-    # The dropdown's own "Select all" picks every ticker in the index.
-    tickers = st.multiselect("Tickers", options, key=f"tickers:{universe}",
-                             default=["AAPL"] if "AAPL" in options else options[:1])
+    # Picking an index pre-selects all of its tickers (remove any you don't want);
+    # "All tickers" starts with just AAPL.
+    if UNIVERSES[universe] is None:
+        default = ["AAPL"] if "AAPL" in options else options[:1]
+    else:
+        default = options
+    tickers = st.multiselect("Tickers", options, key=f"tickers:{universe}", default=default)
     if len(tickers) > 20:
         st.caption(f"{len(tickers)} tickers selected. Large runs on 1m/5m bars take a while.")
     tickers = [t for t in tickers if t in tickers_all]  # drop any whose data was removed
