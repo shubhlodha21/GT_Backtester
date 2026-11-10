@@ -55,7 +55,7 @@ Such a strategy implements `simulate(df, **params)` instead of `generate()` and 
 metrics. Optional class attributes: `timeframes = ["5m"]` (locks the timeframe), `directions = ["Long only"]`,
 `supports_intraday = False`, `default_capital_per_trade`. Params can be `kind="time"` (`"HH:MM"`).
 
-Example: `strategies/breakout_v4.py` — the V4 5m breakout (first open entry, fixed stop loss, re-entry on a new
+Example: `strategies/breakout_v4.py` — High-Breakout, the V4 5m breakout (first open entry, fixed stop loss, re-entry on a new
 high since the first entry), ported from `Breakout_Live\V4\sma_v4\engine.py` and checked trade-for-trade against it.
 
 ## Execution model

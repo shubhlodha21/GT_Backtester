@@ -76,7 +76,7 @@ with st.sidebar:
     if len(tickers) > 20:
         st.caption(f"{len(tickers)} tickers selected. Large runs on 1m/5m bars take a while.")
     tickers = [t for t in tickers if t in tickers_all]  # drop any whose data was removed
-    # A strategy may fix its timeframe (e.g. Breakout V4 always runs on 5m). The strategy
+    # A strategy may fix its timeframe (e.g. High-Breakout always runs on 5m). The strategy
     # picker sits further down, so read its current value from session state.
     _chosen = st.session_state.get("strategy")
     fixed_tfs = REGISTRY[_chosen].timeframes if _chosen in REGISTRY else None

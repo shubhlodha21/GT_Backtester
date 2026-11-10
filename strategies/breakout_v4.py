@@ -1,4 +1,4 @@
-"""Breakout V4 - ported from D:\\Trading_Strategies\\Gautam Sir\\Breakout_Live\\V4\\sma_v4\\engine.py.
+"""High-Breakout (Breakout V4) - ported from D:\\Trading_Strategies\\Gautam Sir\\Breakout_Live\\V4\\sma_v4\\engine.py.
 
     First entry - buy at the OPEN of the first 5m candle of the test (once per ticker)
     Exit        - a 5m LOW at/below the fixed stop (entry - Stop Loss %) -> sold at the stop
@@ -55,7 +55,7 @@ def bar_close_times(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
 class BreakoutV4(Strategy):
     """5m breakout: buy the first open, fixed stop loss, re-enter on a new high since the first entry. Long only, held overnight."""
 
-    name = "Breakout V4"
+    name = "High-Breakout"
     params = {
         "entry_from": Param("Entry From", "09:30", kind="time",
                             help="Start time of the first 5m candle allowed to give a breakout re-entry."),
