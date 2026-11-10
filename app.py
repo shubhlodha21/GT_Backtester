@@ -13,7 +13,7 @@ from plotly.subplots import make_subplots
 from core.config import DEFAULT_TIMEFRAMES, TIMEFRAMES
 from core.data import data_range, list_tickers, load_bars
 from core.fmt import DATE_JS, DATETIME_JS, DATETIME_XL, DATE_XL, fmt_date, for_csv, for_excel, is_date_only, style_time_axis
-from core.universes import ALL, AS_OF, UNIVERSES, filter_available, members
+from core.universes import UNIVERSES, filter_available
 from core.engine import Result, Settings, combine_daily, run_backtest
 from core.metrics import annual_vol_pct, buy_hold_pct, summarize
 from strategies import REGISTRY
@@ -68,13 +68,7 @@ with st.sidebar:
     st.subheader("Universe")
     universe = st.selectbox("Index", list(UNIVERSES), key="universe",
                             help="Limit the ticker list to an index's current members.")
-    options, missing = filter_available(universe, tickers_all)
-    if universe != ALL:
-        st.caption(f"**{len(options)}** of {len(members(universe))} {universe} tickers have data "
-                   f"(list as of {AS_OF[universe]}).")
-        if missing:
-            with st.expander(f"{len(missing)} members without data"):
-                st.write(", ".join(missing))
+    options, _ = filter_available(universe, tickers_all)
     # Key per universe, so switching index resets the picker to that index's tickers.
     # The dropdown's own "Select all" picks every ticker in the index.
     tickers = st.multiselect("Tickers", options, key=f"tickers:{universe}",
