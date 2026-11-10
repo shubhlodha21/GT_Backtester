@@ -14,7 +14,7 @@ from core.config import DEFAULT_TIMEFRAMES, TIMEFRAMES
 from core.data import data_range, list_tickers, load_bars
 from core.fmt import DATE_JS, DATETIME_JS, DATETIME_XL, DATE_XL, fmt_date, for_csv, for_excel, is_date_only, style_time_axis
 from core.universes import UNIVERSES, filter_available
-from core.engine import Result, Settings, combine_daily, run_backtest
+from core.engine import Result, Settings, combine_daily, run_backtest, run_fills
 from core.metrics import annual_vol_pct, buy_hold_pct, summarize
 from strategies import REGISTRY
 
@@ -76,7 +76,15 @@ with st.sidebar:
     if len(tickers) > 20:
         st.caption(f"{len(tickers)} tickers selected. Large runs on 1m/5m bars take a while.")
     tickers = [t for t in tickers if t in tickers_all]  # drop any whose data was removed
-    tfs = st.multiselect("Timeframes", list(TIMEFRAMES), default=DEFAULT_TIMEFRAMES)
+    # A strategy may fix its timeframe (e.g. Breakout V4 always runs on 5m). The strategy
+    # picker sits further down, so read its current value from session state.
+    _chosen = st.session_state.get("strategy")
+    fixed_tfs = REGISTRY[_chosen].timeframes if _chosen in REGISTRY else None
+    if fixed_tfs:
+        tfs = list(fixed_tfs)
+        st.caption(f"Timeframe: **{', '.join(tfs)}** (set by {_chosen})")
+    else:
+        tfs = st.multiselect("Timeframes", list(TIMEFRAMES), default=DEFAULT_TIMEFRAMES)
 
     # Dates default to the full span of data for the selected tickers. The widget
     # key depends on the selection, so changing tickers resets the dates to the
@@ -104,7 +112,8 @@ with st.sidebar:
     st.caption("Session: RTH only (09:30–16:00 ET)")
 
     st.subheader("Strategy")
-    strat_name = st.selectbox("Strategy", list(REGISTRY), index=None, placeholder="Select a strategy…")
+    strat_name = st.selectbox("Strategy", list(REGISTRY), index=None, placeholder="Select a strategy…",
+                              key="strategy")
 
     if strat_name is None:
         st.info("Select a strategy to see its parameters and execution options.")
@@ -118,10 +127,14 @@ with st.sidebar:
             key = f"param:{strat_name}:{k}"
             if p.kind == "int":
                 params[k] = cols[i % 2].number_input(p.label, int(p.min), int(p.max), int(p.default),
-                                                     int(p.step), key=key)
+                                                     int(p.step), key=key, help=p.help)
+            elif p.kind == "time":
+                hh, mm = map(int, str(p.default).split(":"))
+                params[k] = cols[i % 2].time_input(p.label, time(hh, mm), step=300, key=key,
+                                                   help=p.help).strftime("%H:%M")
             else:
                 params[k] = cols[i % 2].number_input(p.label, float(p.min), float(p.max), float(p.default),
-                                                     float(p.step), key=key)
+                                                     float(p.step), key=key, help=p.help)
 
         st.subheader("Execution")
         capital = st.number_input("Initial capital ($)", 1_000.0, 1e9, 100_000.0, 10_000.0)
@@ -136,7 +149,9 @@ with st.sidebar:
         sizing = st.radio("Position sizing", ["Fixed capital", "Fixed qty"], horizontal=True)
         cap_per_trade, qty = 100_000.0, 100
         if sizing == "Fixed capital":
-            cap_per_trade = st.number_input("Capital / trade ($)", 100.0, 1e9, 100_000.0, 10_000.0)
+            cap_per_trade = st.number_input("Capital / trade ($)", 100.0, 1e9,
+                                            float(strat.default_capital_per_trade), 10_000.0,
+                                            key=f"cap:{strat_name}")
         else:
             qty = st.number_input("Qty / trade", 1, 10_000_000, 100)
 
@@ -176,8 +191,12 @@ if run:
             if df.empty or len(df) < 3:
                 st.warning(f"No data for {t} {tf} in range.")
                 continue
-            sig, ind = strat.generate(df, **params)
-            results.append(run_backtest(df, sig, ind, settings, t, tf))
+            if strat.custom_engine:
+                used, fills, ind = strat.simulate(df, **params)
+                results.append(run_fills(used, fills, ind, settings, t, tf))
+            else:
+                sig, ind = strat.generate(df, **params)
+                results.append(run_backtest(df, sig, ind, settings, t, tf))
         bar.empty()
         st.session_state["results"] = results
         st.session_state["settings"] = settings

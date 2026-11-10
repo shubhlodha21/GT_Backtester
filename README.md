@@ -47,6 +47,17 @@ class MyStrat(Strategy):
 
 Then add `MyStrat` to `REGISTRY` in `strategies/__init__.py`. The UI creates inputs for its parameters automatically.
 
+### Strategies that fill inside a bar
+
+Stops and breakout levels fill at a price inside the candle, which the signal engine (next-bar open) can't express.
+Such a strategy implements `simulate(df, **params)` instead of `generate()` and returns
+`(bars used, [core.engine.Fill, ...], indicators)`; the engine turns the fills into the same trade sheet, MTM and
+metrics. Optional class attributes: `timeframes = ["5m"]` (locks the timeframe), `directions = ["Long only"]`,
+`supports_intraday = False`, `default_capital_per_trade`. Params can be `kind="time"` (`"HH:MM"`).
+
+Example: `strategies/breakout_v4.py` — the V4 5m breakout (first open entry, fixed stop loss, re-entry on a new
+high since the first entry), ported from `Breakout_Live\V4\sma_v4\engine.py` and checked trade-for-trade against it.
+
 ## Execution model
 
 - Signals are computed on bar close; orders fill at the **next bar's open** (no look-ahead).

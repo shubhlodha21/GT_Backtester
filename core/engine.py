@@ -198,6 +198,103 @@ def _daily_mtm(bars: pd.DataFrame, trades: pd.DataFrame, s: Settings) -> pd.Data
     return d[order]
 
 
+@dataclass
+class Fill:
+    """One trade produced by a strategy that runs its own simulation (fills inside a bar).
+
+    e / x   : bar positions of the entry and exit bars (x >= e)
+    entry_price / exit_price : actual fill prices (may be inside the bar's range)
+    exit_time : timestamp shown as the exit time (defaults to bar x's start)
+    extra   : additional trade-sheet columns (e.g. Entry Type, Stop Price)
+    """
+    e: int
+    x: int
+    entry_price: float
+    exit_price: float
+    exit_reason: str
+    side: int = 1
+    exit_time: pd.Timestamp | None = None
+    extra: dict = field(default_factory=dict)
+
+
+def run_fills(df: pd.DataFrame, fills: list[Fill], indicators: dict, s: Settings,
+              ticker: str, timeframe: str) -> Result:
+    """Build the same Result as run_backtest, from trades a strategy simulated itself.
+
+    Bar-level MTM with intrabar fills: on the entry bar P&L runs from the fill price to the
+    close, on later bars close-to-close, and on the exit bar from the previous close to the
+    exit price. Every exit (stop, signal or End of Data) is a real fill and pays costs.
+    """
+    n = len(df)
+    idx = df.index
+    o, hi, lo, c = (df[k].to_numpy(float) for k in ("open", "high", "low", "close"))
+    gross, cost, hold = np.zeros(n), np.zeros(n), np.zeros(n)
+    signal = np.zeros(n, dtype="int8")
+    slip = s.slippage_bps / 1e4
+    rows = []
+    for k, f in enumerate(fills, 1):
+        e, x, pe, px, side = f.e, f.x, f.entry_price, f.exit_price, f.side
+        if s.sizing == "Fixed qty":
+            q = float(s.qty)
+        else:
+            q = float(np.floor(s.capital_per_trade / pe)) if pe > 0 else 0.0
+        sq = side * q
+        if x == e:
+            gross[e] += sq * (px - pe)
+        else:
+            gross[e] += sq * (c[e] - pe)
+            gross[e + 1:x] += sq * (c[e + 1:x] - c[e:x - 1])
+            gross[x] += sq * (px - c[x - 1])
+        hold[e:x] += sq
+        c_in = q * (pe * slip + s.commission_per_share)
+        c_out = q * (px * slip + s.commission_per_share)
+        cost[e] += c_in
+        cost[x] += c_out
+        signal[e] = side
+        if side > 0:
+            mae, mfe = lo[e:x + 1].min() - pe, hi[e:x + 1].max() - pe
+        else:
+            mae, mfe = pe - hi[e:x + 1].max(), pe - lo[e:x + 1].min()
+        exit_t = f.exit_time if f.exit_time is not None else idx[x]
+        g = sq * (px - pe)
+        rows.append({
+            "Trade #": k, "Ticker": ticker, "TF": timeframe,
+            "Side": "LONG" if side > 0 else "SHORT", "Qty": int(q),
+            "Entry Time": idx[e], "Entry Price": round(pe, 4),
+            "Exit Time": exit_t, "Exit Price": round(px, 4), "Exit Reason": f.exit_reason,
+            "Bars Held": x - e + 1, "Holding Time": exit_t - idx[e],
+            "Gross P&L": g, "Costs": c_in + c_out, "Net P&L": g - c_in - c_out,
+            "Return %": 100 * side * (px - pe) / pe,
+            "MAE": mae, "MFE": mfe, **f.extra,
+        })
+
+    net = gross - cost
+    equity = s.initial_capital + np.cumsum(net)
+    bars = df.copy()
+    for name, ser in indicators.items():
+        bars[name] = ser
+    bars["signal"] = signal
+    bars["position"] = hold
+    bars["gross_pnl"] = gross
+    bars["costs"] = cost
+    bars["mtm_pnl"] = net
+    bars["equity"] = equity
+    bars["drawdown"] = equity - np.maximum.accumulate(equity)
+
+    cols = ["Trade #", "Ticker", "TF", "Side", "Qty", "Entry Time", "Entry Price",
+            "Exit Time", "Exit Price", "Exit Reason", "Bars Held", "Holding Time",
+            "Gross P&L", "Costs", "Net P&L", "Return %", "MAE", "MFE"]
+    extra_cols = list(dict.fromkeys(k for f in fills for k in f.extra))
+    if rows:
+        trades = pd.DataFrame(rows)
+        trades["Cum P&L"] = trades["Net P&L"].cumsum()
+    else:
+        trades = pd.DataFrame(columns=cols + extra_cols + ["Cum P&L"])
+    trades = trades[cols + extra_cols + ["Cum P&L"]]
+    daily = _daily_mtm(bars, trades, s)
+    return Result(ticker, timeframe, bars, trades, daily, list(indicators))
+
+
 def combine_daily(results: list[Result], initial_capital: float) -> pd.DataFrame:
     """Portfolio daily MTM: sum of each run's daily P&L (each run trades its own sizing)."""
     pnl = pd.concat({r.key: r.daily["MTM P&L"] for r in results}, axis=1).fillna(0.0)
