@@ -68,7 +68,7 @@ class BreakoutV4(Strategy):
     directions = ["Long only"]
     supports_intraday = False
     timeframes = ["5m"]
-    default_capital_per_trade = 10_000.0
+    # Uses the app-wide default ($100,000 per trade, same as Initial capital).
 
     def validate(self, p):
         if _minutes(p["entry_from"]) > _minutes(p["entry_to"]):
